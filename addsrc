@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# --- Helper function for colored output ---
+print_success() {
+    echo -e "\033[0;32m$1\033[0m"
+}
+
+print_info() {
+    echo -e "\033[0;34m$1\033[0m"
+}
+
+print_error() {
+    echo -e "\033[0;31m$1\033[0m"
+}
+
+# --- Check for flags and arguments ---
+HEADER_FLAG=false
+if [ "$1" == "-h" ]; then
+    HEADER_FLAG=true
+    shift
+fi
+
+if [ -z "$1" ]; then
+    print_error "Usage: $0 [-h] <src_file_path>"
+    exit 1
+fi
+
+SRC_FILE="$1"
+HEADER_FILE=""
+if $HEADER_FLAG; then
+	# Check if inc directory exists
+	if [ ! -d "inc" ]; then
+		print_info "Creating inc directory"
+		mkdir -p inc
+	fi
+	
+	# Get the basename of the source file without path and extension
+	BASE_NAME=$(basename "$SRC_FILE" .cpp)
+	
+	# Create header file path properly
+	HEADER_FILE="inc/${BASE_NAME}.hpp"
+    
+    # Create any subdirectories needed if source is in a subdirectory
+    if [[ "$SRC_FILE" == */* ]]; then
+        # Extract subdirectory part (e.g., "utils" from "src/utils/foo.cpp")
+        SUBDIR=$(dirname "${SRC_FILE#src/}")
+        if [ "$SUBDIR" != "." ]; then
+            # Create header file path with same subdirectory structure
+            mkdir -p "inc/$SUBDIR"
+            HEADER_FILE="inc/$SUBDIR/${BASE_NAME}.hpp"
+        fi
+    fi
+fi
+
+# --- Ensure src/ directory exists ---
+if [[ "$SRC_FILE" != src/* ]]; then
+    print_error "Source file must be in the src/ directory."
+    exit 1
+fi
+
+# --- Create the source file if it doesn't exist ---
+if [ ! -f "$SRC_FILE" ]; then
+	print_info "Creating source file: $SRC_FILE"
+	mkdir -p "$(dirname "$SRC_FILE")"
+	if $HEADER_FLAG; then
+		# Include the header file in the source file
+		echo -e "#include \"${BASE_NAME}.hpp\"\n" > "$SRC_FILE"
+	else
+		# If no header file, just create a basic source file
+		echo -e "// $(basename "$SRC_FILE")\n" > "$SRC_FILE"
+	fi
+else
+	print_info "Source file already exists: $SRC_FILE"
+fi
+
+# --- Create the header file if -h flag is set ---
+if $HEADER_FLAG; then
+    if [ ! -f "$HEADER_FILE" ]; then
+        print_info "Creating header file: $HEADER_FILE"
+        mkdir -p "$(dirname "$HEADER_FILE")"
+        cat > "$HEADER_FILE" << EOL
+#pragma once
+#ifndef $(basename "$HEADER_FILE" .hpp | tr a-z A-Z)_HPP
+#define $(basename "$HEADER_FILE" .hpp | tr a-z A-Z)_HPP
+
+// Hello Lazy
+
+#endif // $(basename "$HEADER_FILE" .hpp | tr a-z A-Z)_HPP
+EOL
+    else
+        print_info "Header file already exists: $HEADER_FILE"
+    fi
+fi
+
+# --- Update the Makefile ---
+if [ -f Makefile ]; then
+    if ! grep -q "$(basename "$SRC_FILE")" Makefile; then
+        print_info "Adding $SRC_FILE to Makefile"
+        sed -i '' "/^SRC_FILES = / s/$/ $(basename "$SRC_FILE")/" Makefile
+    else
+        print_info "$SRC_FILE is already in the Makefile"
+    fi
+else
+    print_error "Makefile not found in the current directory."
+fi
+
+print_success "Done!"
